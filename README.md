@@ -4,7 +4,7 @@
 
 A proposta é facilitar o acesso ao conteúdo falado de vídeos públicos do YouTube para estudo, pesquisa e análise. Cada agente poderá pesquisar assuntos de seu próprio interesse, localizar vídeos relevantes e trabalhar com informações verificáveis sobre suas fontes.
 
-**O projeto está em fase de pesquisa e desenvolvimento. Ainda não oferece uma skill funcional ou um mecanismo de transcrição validado.**
+**Motor experimental de legendas implementado nesta branch; transcrição real via HTTPS ainda não validada.**
 
 ## O que pretendemos construir
 
@@ -48,7 +48,7 @@ Identificar apenas a existência de uma faixa **não equivale** a obter sua tran
 
 ## Estado do projeto
 
-**Planejamento e investigação técnica.** O repositório apresenta, por enquanto, a proposta do produto. **Não há instalação, release funcional, suporte a vídeos específicos ou compatibilidade comprovada para anunciar.**
+**Protótipo experimental de recuperação por ID.** Python 3.10+ sem dependências externas. Executar `python transcript.py VIDEO_ID --language pt` ou `python -m unittest -v`. O JSON identifica vídeo, idioma, faixa automática e segmentos com tempo; falhas retornam código e exit 1. Pesquisa por assunto ainda não implementada. A tentativa HTTPS local retornou `dns_failure`; os 14 testes offline são sintéticos. Não há release nem comprovação de compatibilidade real. Não contornar bloqueios de acesso.
 
 A publicação de código ocorrerá conforme as funcionalidades forem implementadas e testadas. O README será atualizado para distinguir recursos disponíveis de funcionalidades planejadas.
 
