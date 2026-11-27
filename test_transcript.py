@@ -91,5 +91,55 @@ class Tests(unittest.TestCase):
         self.assertIsNone(t.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://other.invalid/'))
 
 
+class SearchTests(unittest.TestCase):
+    def fixture(self, items):
+        data = {'contents': {'twoColumnSearchResultsRenderer': {'primaryContents':
+            {'sectionListRenderer': {'contents': [{'itemSectionRenderer': {'contents': items}}]}}}}}
+        return '<script>var ytInitialData = ' + json.dumps(data) + ';</script>'
+
+    def video(self, identifier=VID):
+        return {'videoRenderer': {'videoId': identifier, 'title': {'runs': [{'text': 'A '}, {'text': 'video'}]},
+                                 'ownerText': {'simpleText': 'Channel'}}}
+
+    def test_search_order_dedup_and_filter(self):
+        page = self.fixture([self.video(), self.video(), {'channelRenderer': {}},
+                             self.video('invalid'), self.video('12345678901')])
+        result = t.parse_search(page)
+        self.assertEqual([x['video_id'] for x in result], [VID, '12345678901'])
+        self.assertEqual(result[0]['title'], 'A video')
+        self.assertEqual(result[0]['channel'], 'Channel')
+        self.assertEqual(len(t.parse_search(page, 1)), 1)
+
+    def test_search_transport_encoding(self):
+        calls = []
+        def transport(url):
+            calls.append(url)
+            return self.fixture([self.video()])
+        out = t.search_videos('a & b', transport=transport)
+        self.assertEqual(calls, ['https://www.youtube.com/results?search_query=a+%26+b'])
+        self.assertEqual(len(out['videos']), 1)
+
+    def test_search_bad_response(self):
+        for page in ('consent', 'ytInitialData = {}'):
+            with self.assertRaises(t.CaptionError):
+                t.parse_search(page)
+
+    def test_search_empty_results(self):
+        self.assertEqual(t.parse_search(self.fixture([])), [])
+
+    def test_search_invalid_parameters(self):
+        for query, limit in [('', 10), ('a', 0), ('a', 51), ('a', True)]:
+            with self.assertRaises(t.CaptionError):
+                t.search_videos(query, limit, transport=lambda _: self.fail('network invoked'))
+
+    def test_malformed_player_and_track(self):
+        with self.assertRaisesRegex(t.CaptionError, 'playback_not_public'):
+            t.player_response('ytInitialPlayerResponse = {"playabilityStatus":null}', VID)
+        with self.assertRaisesRegex(t.CaptionError, 'no_caption_tracks'):
+            t.choose_track({'captions': None}, 'pt')
+        with self.assertRaisesRegex(t.CaptionError, 'unsupported_endpoint'):
+            t.caption_url({'baseUrl': None}, VID)
+
+
 if __name__ == '__main__':
     unittest.main()

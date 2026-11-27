@@ -24,7 +24,7 @@ def checked_url(url):
     try:
         u = urllib.parse.urlsplit(url)
         if (u.scheme == 'https' and u.netloc == 'www.youtube.com'
-                and u.path in ('/watch', '/api/timedtext') and not u.fragment
+                and u.path in ('/watch', '/api/timedtext', '/results') and not u.fragment
                 and not any(ord(c) < 33 or ord(c) == 127 for c in url)):
             return url
     except ValueError:
@@ -59,17 +59,24 @@ def player_response(page, expected_id):
         except ValueError:
             continue
         if isinstance(value, dict):
-            status = value.get('playabilityStatus', {}).get('status')
+            status = obj(value.get('playabilityStatus')).get('status')
             if status != 'OK':
                 raise CaptionError('playback_not_public')
-            if value.get('videoDetails', {}).get('videoId') != expected_id:
+            if obj(value.get('videoDetails')).get('videoId') != expected_id:
                 raise CaptionError('video_mismatch')
             return value
     raise CaptionError('player_response_missing')
 
 
+def obj(value):
+    return value if isinstance(value, dict) else {}
+
+
 def choose_track(player, language):
-    tracks = player.get('captions', {}).get('playerCaptionsTracklistRenderer', {}).get('captionTracks', [])
+    tracks = obj(obj(obj(player).get('captions')).get('playerCaptionsTracklistRenderer')).get('captionTracks', [])
+    if not isinstance(tracks, list):
+        raise CaptionError('invalid_caption_tracks')
+    tracks = [t for t in tracks if isinstance(t, dict)]
     if not tracks:
         raise CaptionError('no_caption_tracks')
     matches = [t for t in tracks if t.get('languageCode') == language]
@@ -79,7 +86,10 @@ def choose_track(player, language):
 
 
 def caption_url(track, expected_id):
-    url = checked_url(track.get('baseUrl', ''))
+    raw = obj(track).get('baseUrl')
+    if not isinstance(raw, str):
+        raise CaptionError('unsupported_endpoint')
+    url = checked_url(raw)
     u = urllib.parse.urlsplit(url)
     params = urllib.parse.parse_qsl(u.query, keep_blank_values=True)
     if u.path != '/api/timedtext' or [v for k, v in params if k == 'v'] != [expected_id]:
@@ -122,13 +132,79 @@ def transcript(identifier, language, transport=fetch):
             'automatic': track.get('kind') == 'asr', 'segments': segments}
 
 
+
+def renderer_text(value):
+    value = obj(value)
+    if isinstance(value.get('simpleText'), str):
+        return value['simpleText']
+    runs = value.get('runs')
+    if not isinstance(runs, list):
+        return ''
+    return ''.join(r['text'] for r in runs if isinstance(r, dict) and isinstance(r.get('text'), str))
+
+
+def parse_search(page, limit=10):
+    if type(limit) is not int or not 1 <= limit <= 50:
+        raise CaptionError('invalid_search_limit')
+    data = None
+    for match in re.finditer(r'\bytInitialData\s*=\s*', page):
+        try:
+            candidate, _ = json.JSONDecoder().raw_decode(page, match.end())
+        except ValueError:
+            continue
+        if isinstance(candidate, dict):
+            data = candidate
+            break
+    if data is None:
+        raise CaptionError('search_response_missing')
+    # Restrict discovery to primary search-result sections; no recommendations.
+    primary = obj(obj(obj(obj(data.get('contents')).get('twoColumnSearchResultsRenderer')).get('primaryContents')).get('sectionListRenderer'))
+    sections = primary.get('contents')
+    if not isinstance(sections, list):
+        raise CaptionError('invalid_search_response')
+    result, seen = [], set()
+    for section in sections:
+        items = obj(obj(section).get('itemSectionRenderer')).get('contents', [])
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            v = obj(obj(item).get('videoRenderer'))
+            identifier = v.get('videoId')
+            title = renderer_text(v.get('title')).strip()
+            if not isinstance(identifier, str) or not re.fullmatch(r'[A-Za-z0-9_-]{11}', identifier) or not title or identifier in seen:
+                continue
+            seen.add(identifier)
+            result.append({'video_id': identifier, 'title': title,
+                           'channel': renderer_text(v.get('ownerText')),
+                           'source': 'https://www.youtube.com/watch?v=' + identifier})
+            if len(result) == limit:
+                return result
+    return result
+
+
+def search_videos(query, limit=10, transport=fetch):
+    if not isinstance(query, str) or not query.strip() or len(query) > 300:
+        raise CaptionError('invalid_search_query')
+    if type(limit) is not int or not 1 <= limit <= 50:
+        raise CaptionError('invalid_search_limit')
+    url = 'https://www.youtube.com/results?' + urllib.parse.urlencode({'search_query': query})
+    return {'query': query, 'source': url, 'videos': parse_search(transport(url), limit)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('video_id')
-    parser.add_argument('--language', required=True)
+    parser.add_argument('video_id', nargs='?')
+    parser.add_argument('--language')
+    parser.add_argument('--search')
+    parser.add_argument('--limit', type=int, default=10)
     args = parser.parse_args()
     try:
-        result = transcript(args.video_id, args.language)
+        if args.search is not None and args.video_id is None and args.language is None:
+            result = search_videos(args.search, args.limit)
+        elif args.search is None and args.video_id is not None and args.language is not None:
+            result = transcript(args.video_id, args.language)
+        else:
+            raise CaptionError('invalid_arguments')
     except CaptionError as exc:
         print(json.dumps({'error': exc.code}))
         return 1

@@ -57,3 +57,7 @@ A publicação de código ocorrerá conforme as funcionalidades forem implementa
 O arquivo [LICENSE](LICENSE) existente neste repositório contém a dedicação **CC0 1.0 Universal**. As condições aplicáveis a futuros componentes e dependências serão documentadas junto com sua publicação.
 
 Projeto de **Bobby Dias e Andrew Vox**, no âmbito da **Enterprise**. O objetivo é colaborar no desenvolvimento de ferramentas abertas que permitam aos agentes pesquisar informações com mais autonomia.
+
+## Experimental public search
+
+`python transcript.py --search "query" --limit 10` returns JSON with video IDs, titles, channel names and source URLs from the primary search results. This is not a transcript; call the existing caption command with a selected ID. No pagination, credentials, or access-control bypass. Synthetic coverage does not prove live availability.
