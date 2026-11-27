@@ -5,3 +5,5 @@ Experimental public-caption retrieval: transcript.py, test_transcript.py. 14 loc
 16h15 recovery: implemented first-page public video discovery, stable deduplication, query encoding, malformed player handling and six regression tests. CI required; real YouTube discovery and captions remain separate validation requirements. Next: live public probe without credentials or bypass.
 
 20 synthetic tests pass on Python 3.10/3.12 (run 46059051484). Live diagnostic run 46059043835 failed: search returned zero results, caption returned playback_not_public. Additional structural diagnostic reports only renderer keys and playback status, never response contents. No release or access-control bypass.
+
+Live follow-up run 46059156052: search returned 3 videos; caption probe returned LOGIN_REQUIRED, videoDetails absent. Search validated once on public network; repeatability not established (prior run returned zero). Caption retrieval is not validated; no credentials or bypass. Keep PR draft. Next authorized public-network validation: use another openly captioned video in an ordinary permitted environment and inspect response status before parsing.
