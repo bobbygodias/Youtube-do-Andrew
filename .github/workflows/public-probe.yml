@@ -1,0 +1,37 @@
+name: Public network diagnostic
+on:
+  push:
+    branches: ['feat/public-caption-engine-20261127']
+    paths: ['.github/workflows/public-probe.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Attempt public search and caption retrieval
+        run: |
+          python - <<'PY'
+          import json
+          from transcript import search_videos, transcript, CaptionError
+          failures = []
+          for name, action, key in [
+              ('search', lambda: search_videos('TED Ken Robinson schools creativity', 3), 'videos'),
+              ('caption', lambda: transcript('iG9CE55wbtY', 'en'), 'segments')]:
+              try:
+                  result = action()
+                  count = len(result[key])
+                  print(json.dumps({'probe': name, 'count': count}))
+                  if count == 0:
+                      failures.append(name)
+              except CaptionError as exc:
+                  print(json.dumps({'probe': name, 'error': exc.code}))
+                  failures.append(name)
+          raise SystemExit(bool(failures))
+          PY
