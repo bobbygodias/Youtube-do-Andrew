@@ -19,7 +19,8 @@ jobs:
         run: |
           python - <<'PY'
           import json
-          from transcript import search_videos, transcript, CaptionError
+          from transcript import search_videos, transcript, CaptionError, fetch
+          import re
           failures = []
           for name, action, key in [
               ('search', lambda: search_videos('TED Ken Robinson schools creativity', 3), 'videos'),
@@ -33,5 +34,28 @@ jobs:
               except CaptionError as exc:
                   print(json.dumps({'probe': name, 'error': exc.code}))
                   failures.append(name)
+          # Diagnose structure only; do not print response bodies, URLs or tokens.
+          def inspect(url, variable):
+              try:
+                  body = fetch(url)
+                  match = re.search(r'\b' + variable + r'\s*=\s*', body)
+                  if not match:
+                      print(json.dumps({'diagnostic': variable, 'missing': True}))
+                      return
+                  root, _ = json.JSONDecoder().raw_decode(body, match.end())
+                  if variable == 'ytInitialPlayerResponse':
+                      print(json.dumps({'diagnostic': variable,
+                          'status': root.get('playabilityStatus', {}).get('status'),
+                          'has_video_details': bool(root.get('videoDetails'))}))
+                  else:
+                      sections = root.get('contents', {}).get('twoColumnSearchResultsRenderer', {}).get('primaryContents', {}).get('sectionListRenderer', {}).get('contents', [])
+                      print(json.dumps({'diagnostic': variable, 'section_keys': [list(x) for x in sections if isinstance(x, dict)],
+                          'item_keys': [list(i) for x in sections if isinstance(x, dict) for i in x.get('itemSectionRenderer', {}).get('contents', []) if isinstance(i, dict)][:30]}))
+              except (CaptionError, ValueError, TypeError, AttributeError) as exc:
+                  print(json.dumps({'diagnostic': variable, 'error': getattr(exc, 'code', type(exc).__name__)}))
+          if 'search' in failures:
+              inspect('https://www.youtube.com/results?search_query=TED+Ken+Robinson+schools+creativity', 'ytInitialData')
+          if 'caption' in failures:
+              inspect('https://www.youtube.com/watch?v=iG9CE55wbtY', 'ytInitialPlayerResponse')
           raise SystemExit(bool(failures))
           PY
