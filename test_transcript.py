@@ -141,5 +141,39 @@ class SearchTests(unittest.TestCase):
             t.caption_url({'baseUrl': None}, VID)
 
 
+class LocalCaptionTests(unittest.TestCase):
+    def test_vtt_multiline_and_settings(self):
+        raw = 'WEBVTT\n\nNOTE metadata\nignored\n\ncue-one\n00:01.100 --> 00:03.200 align:start\nOlá\nmundo\n\n00:03.200 --> 00:04.000\nnext'
+        result = t.parse_timed_text(raw, 'vtt')
+        self.assertEqual(result[0], {'start_ms':1100,'duration_ms':2100,'text':'Olá\nmundo'})
+        self.assertEqual(result[1]['start_ms'],3200)
+
+    def test_srt_crlf_and_hours(self):
+        result = t.parse_timed_text('1\r\n01:02:03,004 --> 01:02:04,005\r\nText\r\n','srt')
+        self.assertEqual(result,[{'start_ms':3723004,'duration_ms':1001,'text':'Text'}])
+
+    def test_invalid_timestamp_and_interval(self):
+        for stamp in ['00:60.000','nope','00:00.00']:
+            with self.assertRaises(t.CaptionError):
+                t.timestamp_ms(stamp)
+        with self.assertRaisesRegex(t.CaptionError,'invalid_caption_interval'):
+            t.parse_timed_text('WEBVTT\n\n00:02.000 --> 00:01.000\nx','vtt')
+
+    def test_file_import_and_missing(self):
+        import tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder)/'example.vtt'
+            path.write_text('WEBVTT\n\n00:00.000 --> 00:01.000\nabc',encoding='utf-8-sig')
+            self.assertEqual(t.import_captions(path,'vtt')['segments'][0]['text'],'abc')
+            with self.assertRaisesRegex(t.CaptionError,'caption_file_unreadable'):
+                t.import_captions(Path(folder)/'missing','srt')
+
+    def test_empty_invalid_header_and_format(self):
+        for body,fmt in [('WEBVTT','vtt'),('bad','vtt'),('hello','txt')]:
+            with self.assertRaises(t.CaptionError):
+                t.parse_timed_text(body,fmt)
+
+
 if __name__ == '__main__':
     unittest.main()

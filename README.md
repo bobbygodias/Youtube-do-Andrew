@@ -61,3 +61,7 @@ Projeto de **Bobby Dias e Andrew Vox**, no âmbito da **Enterprise**. O objetivo
 ## Experimental public search
 
 `python transcript.py --search "query" --limit 10` returns JSON with video IDs, titles, channel names and source URLs from the primary search results. This is not a transcript; call the existing caption command with a selected ID. No pagination, credentials, or access-control bypass. Synthetic coverage does not prove live availability.
+
+## Offline import of captions you already have
+
+`python transcript.py --caption-file captions.vtt --format vtt` or `--format srt` reads a local subtitle file and emits the same timestamped segments as the network retrieval path. This does not fetch a video or generate speech recognition. No credentials, services or extra dependencies.

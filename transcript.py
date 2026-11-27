@@ -191,15 +191,80 @@ def search_videos(query, limit=10, transport=fetch):
     return {'query': query, 'source': url, 'videos': parse_search(transport(url), limit)}
 
 
+
+def timestamp_ms(value):
+    match = re.fullmatch(r'(?:(\d{2,}):)?([0-5]\d):([0-5]\d)[.,](\d{3})', value)
+    if not match:
+        raise CaptionError('invalid_caption_timestamp')
+    hours, minutes, seconds, ms = (int(x or 0) for x in match.groups())
+    return ((hours * 60 + minutes) * 60 + seconds) * 1000 + ms
+
+
+def parse_timed_text(body, fmt):
+    """Import a user-provided WebVTT or SRT subtitle file, no network."""
+    if fmt not in ('vtt', 'srt'):
+        raise CaptionError('unsupported_caption_format')
+    body = body.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n')
+    blocks = re.split(r'\n[ \t]*\n', body.strip())
+    if fmt == 'vtt':
+        if not blocks or not re.fullmatch(r'WEBVTT(?:[ \t].*)?', blocks[0].split('\n')[0]):
+            raise CaptionError('invalid_vtt_header')
+        blocks = blocks[1:]
+    results = []
+    for block in blocks:
+        lines = block.split('\n')
+        if fmt == 'vtt' and (re.match(r'^(NOTE(?:[ \t]|$)|STYLE$|REGION$)', lines[0])):
+            continue
+        if len(lines) >= 2 and '-->' not in lines[0]:
+            if fmt == 'srt' and not lines[0].isdigit():
+                raise CaptionError('invalid_caption_block')
+            lines = lines[1:]
+        if len(lines) < 2 or '-->' not in lines[0]:
+            raise CaptionError('invalid_caption_block')
+        parts = lines[0].split('-->')
+        if len(parts) != 2 or not parts[1].strip():
+            raise CaptionError('invalid_caption_block')
+        start = timestamp_ms(parts[0].strip())
+        end = timestamp_ms(parts[1].strip().split()[0])
+        if end < start:
+            raise CaptionError('invalid_caption_interval')
+        text = '\n'.join(lines[1:]).strip()
+        if text:
+            results.append({'start_ms': start, 'duration_ms': end-start, 'text': text})
+    if not results:
+        raise CaptionError('empty_caption_response')
+    return results
+
+
+def import_captions(path, fmt):
+    try:
+        with open(path, 'rb') as handle:
+            raw = handle.read(8_000_001)
+        if len(raw) > 8_000_000:
+            raise CaptionError('response_too_large')
+        body = raw.decode('utf-8-sig')
+    except (OSError, UnicodeError):
+        raise CaptionError('caption_file_unreadable') from None
+    return {'source': 'local_file', 'format': fmt, 'segments': parse_timed_text(body, fmt)}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('video_id', nargs='?')
     parser.add_argument('--language')
     parser.add_argument('--search')
     parser.add_argument('--limit', type=int, default=10)
+    parser.add_argument('--caption-file')
+    parser.add_argument('--format', choices=['vtt', 'srt'])
     args = parser.parse_args()
     try:
-        if args.search is not None and args.video_id is None and args.language is None:
+        if args.caption_file is not None:
+            if args.format is None or any(x is not None for x in (args.video_id, args.search, args.language)):
+                raise CaptionError('invalid_arguments')
+            result = import_captions(args.caption_file, args.format)
+        elif args.format is not None:
+            raise CaptionError('invalid_arguments')
+        elif args.search is not None and args.video_id is None and args.language is None:
             result = search_videos(args.search, args.limit)
         elif args.search is None and args.video_id is not None and args.language is not None:
             result = transcript(args.video_id, args.language)
