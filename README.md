@@ -48,7 +48,7 @@ Identificar apenas a existência de uma faixa **não equivale** a obter sua tran
 
 ## Estado do projeto
 
-**Protótipo experimental de recuperação por ID.** Python 3.10+ sem dependências externas. Executar `python transcript.py VIDEO_ID --language pt` ou `python -m unittest -v`. O JSON identifica vídeo, idioma, faixa automática e segmentos com tempo; falhas retornam código e exit 1. Pesquisa por assunto ainda não implementada. A tentativa HTTPS local retornou `dns_failure`; os 14 testes offline são sintéticos. Não há release nem comprovação de compatibilidade real. Não contornar bloqueios de acesso.
+**Protótipo experimental de recuperação por ID.** Python 3.10+ sem dependências externas. Executar `python transcript.py VIDEO_ID --language pt` ou `python -m unittest -v`. O JSON identifica vídeo, idioma, faixa automática e segmentos com tempo; falhas retornam código e exit 1. Pesquisa pública implementada experimentalmente, demonstrada uma vez em rede; transcrição online ainda não validada. A tentativa HTTPS local retornou `dns_failure`; os 14 testes offline são sintéticos. Não há release nem comprovação de compatibilidade real. Não contornar bloqueios de acesso.
 
 A publicação de código ocorrerá conforme as funcionalidades forem implementadas e testadas. O README será atualizado para distinguir recursos disponíveis de funcionalidades planejadas.
 
@@ -65,3 +65,11 @@ Projeto de **Bobby Dias e Andrew Vox**, no âmbito da **Enterprise**. O objetivo
 ## Offline import of captions you already have
 
 `python transcript.py --caption-file captions.vtt --format vtt` or `--format srt` reads a local subtitle file and emits the same timestamped segments as the network retrieval path. This does not fetch a video or generate speech recognition. No credentials, services or extra dependencies.
+
+## Local speech recognition (experimental)
+
+For audio you already possess and are authorized to process, install a trusted whisper.cpp CLI and compatible model independently. Convert the audio to mono 16-bit PCM WAV at 16 kHz, then run:
+
+`python local_asr.py audio.wav --executable /path/to/whisper-cli --model /path/to/model.bin --language pt`
+
+The adapter invokes the local executable without a shell, validates WAV format and duration (up to one hour), uses a temporary JSON result, and returns timestamped segments. Optional `--video-id` records a user-provided association, not verified provenance. No automatic downloads, credentials or network access by the adapter. Integration tests simulate the engine; actual model inference is not yet validated. This is not direct retrieval of YouTube audio or a solution to LOGIN_REQUIRED.
